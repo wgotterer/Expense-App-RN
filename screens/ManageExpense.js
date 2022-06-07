@@ -1,16 +1,23 @@
-import { useLayoutEffect, useContext } from "react";
+import { useLayoutEffect, useState, useContext } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import IconButton from "../components/UI/IconButton";
-import Button from "../components/UI/Button";
 import { GlobalStyles } from "../constants/styles";
 import { ExpensesContext } from "../store/expenses-context";
 import ExpenseForm from "../components/ManageExpense/ExpenseForm";
+import { storeExpense, updateExpense, deleteExpense } from "../util/http";
+import LoadingOverlay from "../components/UI/LoadingOverlay";
 
 function ManageExpense({ route, navigation }) {
-  const expenseCtx = useContext(ExpensesContext);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const expensesCtx = useContext(ExpensesContext);
 
   const editedExpenseId = route.params?.expenseId;
   const isEditing = !!editedExpenseId;
+
+  const selectedExpense = expensesCtx.expenses.find(
+    (expense) => expense.id === editedExpenseId
+  );
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -18,43 +25,44 @@ function ManageExpense({ route, navigation }) {
     });
   }, [navigation, isEditing]);
 
-  function deleteExpenseHandler() {
+  async function deleteExpenseHandler() {
+      setIsSubmitting(true)
+    await deleteExpense(editedExpenseId);
+    // dont need to update spinner state becuase we go back
     navigation.goBack();
-    expenseCtx.deleteExpense(editedExpenseId);
+    expensesCtx.deleteExpense(editedExpenseId);
   }
 
   function cancelHandler() {
     navigation.goBack();
   }
 
-  function confirmHandler() {
+  async function confirmHandler(expenseData) {
+    setIsSubmitting(true)
+
     if (isEditing) {
-      expenseCtx.updateExpense(editedExpenseId, {
-        description: "TEST!!!!!",
-        amount: 19.99,
-        date: new Date('2022-03-13'),
-      });
+      expensesCtx.updateExpense(editedExpenseId, expenseData);
+      await updateExpense(editedExpenseId, expenseData);
     } else {
-      expenseCtx.addExpense({
-        description: "TEST",
-        amount: 19.99,
-        date: new Date("2022-05-19"),
-      });
+      const id = await storeExpense(expenseData);
+      expensesCtx.addExpense({ ...expenseData, id: id });
     }
     navigation.goBack();
   }
 
+  if(isSubmitting) {
+      return <LoadingOverlay />
+  }
+
   return (
     <View style={styles.container}>
-        <ExpenseForm />
-      <View style={styles.buttons}>
-        <Button style={styles.button} mode="flat" onPress={cancelHandler}>
-          Cancel
-        </Button>
-        <Button style={styles.button} onPress={confirmHandler}>
-          {isEditing ? "Update" : "Add"}
-        </Button>
-      </View>
+      <ExpenseForm
+        onCancel={cancelHandler}
+        submitButtonLabel={isEditing ? "Update" : "Add"}
+        onSubmit={confirmHandler}
+        defaultValues={selectedExpense}
+      />
+
       {isEditing && (
         <View style={styles.deleteContainer}>
           <IconButton
@@ -77,15 +85,7 @@ const styles = StyleSheet.create({
     padding: 24,
     backgroundColor: GlobalStyles.colors.primary800,
   },
-  buttons: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  button: {
-    minWidth: 120,
-    marginHorizontal: 8,
-  },
+
   deleteContainer: {
     marginTop: 16,
     paddingTop: 8,
